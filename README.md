@@ -1,0 +1,78 @@
+# Nothing TV
+
+A lightweight, remote-first Android TV launcher with a monochrome NOTHING-inspired interface.
+
+This project is a standalone visual fork of [CleanYourTV](https://github.com/Gathin23/cleanyourtv). It keeps the launcher's small Java/Canvas foundation while adding a complete TV UI: Home, All Apps, Inputs, Quick Settings, Search, Settings, Network, Remotes & Accessories, Picture & Sound, Media Library, Prayer Times, Apps & Storage, Home Customization, Live TV, and a clock screensaver.
+
+## Highlights
+
+- Android TV D-pad navigation and focus states on every screen
+- Live analog clock and date
+- Offline Indonesian prayer-time calculations, city/method selection, and next-prayer countdown
+- Dynamic installed-app discovery, favorites, ordering, app details, and hiding
+- Circular monochrome app-icon treatment on Home, All Apps, Search, and App Options
+- Genuine TV input, network, Bluetooth, storage, audio, and package data when Android exposes it
+- Links to the TV's real system settings for restricted controls
+- Manual Light, Manual Dark, and Automatic theme modes
+- DreamService clock screensaver
+- No analytics, telemetry, ads, or `INTERNET` permission
+
+## Requirements
+
+- Android TV 8.0 / API 26 or newer
+- JDK 17
+- Android SDK Platform 34 and Build Tools 34
+- ADB enabled on the TV for installation
+
+Tested on a Changhong U55QCN1 running Android TV 14. Vendor firmware differs, so some system panels or remote buttons may not be exposed on another TV.
+
+## Build
+
+```sh
+./gradlew --no-daemon testReleaseUnitTest lintRelease assembleRelease
+```
+
+The APK is generated locally at:
+
+```text
+app/build/outputs/apk/release/app-release.apk
+```
+
+Compiled APKs are intentionally not committed to this repository.
+
+## Install safely
+
+Connect the TV through Android's Wireless debugging or Network debugging, then run:
+
+```sh
+TV_HOST=<tv-ip> ./build-and-install.sh
+```
+
+Windows PowerShell:
+
+```powershell
+./build-and-install.ps1 -TvAddress <tv-ip>
+```
+
+The installer does **not** uninstall or disable the stock launcher or any system package. It builds from source, installs Nothing TV, starts it, and asks Android to make it Home. If the firmware ignores `set-home-activity`, select Nothing TV in the TV's Home-app/default-app settings.
+
+To revert, select the original launcher in Android TV Settings. Keep ADB enabled until the new launcher has survived a reboot and the original Home can still be selected.
+
+## Platform limitations
+
+- HDMI switching, picture controls, audio controls, sleep timers, channel data, and pairing screens depend on APIs/actions published by the TV firmware.
+- The launcher never invents channel lists, media entries, connection state, or device status.
+- A physical Settings, Input, or Profile button only reaches the launcher when the firmware dispatches its Android key event. Injected ADB keys are not proof that a physical remote button works.
+- Prayer calculations are performed locally and do not require network access. Confirm the selected city and calculation method against your local authority.
+
+## Privacy
+
+Nothing TV has no Internet permission and does not include analytics. Do not publish screenshots containing Wi-Fi names, account details, device names, serial numbers, or other personal identifiers.
+
+## License and credits
+
+MIT licensed. See [LICENSE](LICENSE).
+
+- Original CleanYourTV launcher: Gathin
+- NOTHING-style launcher fork and TV-specific UI work: angger43
+- Outfit typeface: The Outfit Project Authors, licensed under SIL Open Font License 1.1; see [FONT-LICENSE-OFL.txt](FONT-LICENSE-OFL.txt)
