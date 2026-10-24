@@ -17,6 +17,22 @@ This project is a standalone visual fork of [CleanYourTV](https://github.com/Gat
 - DreamService clock screensaver
 - No analytics, telemetry, ads, or `INTERNET` permission
 
+## Screenshots
+
+Captured at 1920×1080 from a real Android TV. Select any image to open the full-resolution reference; the original files are in [`docs/screenshots`](docs/screenshots).
+
+| Home | All Apps |
+| --- | --- |
+| [![Nothing TV Home](docs/screenshots/home.png)](docs/screenshots/home.png) | [![Nothing TV All Apps](docs/screenshots/all-apps.png)](docs/screenshots/all-apps.png) |
+
+| Settings | Quick Settings |
+| --- | --- |
+| [![Nothing TV Settings](docs/screenshots/settings.png)](docs/screenshots/settings.png) | [![Nothing TV Quick Settings](docs/screenshots/quick-settings.png)](docs/screenshots/quick-settings.png) |
+
+### Media Library
+
+[![Nothing TV Media Library](docs/screenshots/media-library.png)](docs/screenshots/media-library.png)
+
 ## Requirements
 
 - Android TV 8.0 / API 26 or newer
