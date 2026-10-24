@@ -12,9 +12,12 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.RadialGradient;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.media.AudioManager;
@@ -61,7 +64,6 @@ import java.util.concurrent.Executors;
  */
 final class NothingLauncherView extends View {
     private static final float W = 720f, H = 405f;
-    private static final int RED = Color.rgb(229, 67, 61);
     private static final ColorMatrixColorFilter MONO;
     static {
         ColorMatrix m = new ColorMatrix(); m.setSaturation(0f); MONO = new ColorMatrixColorFilter(m);
@@ -85,6 +87,8 @@ final class NothingLauncherView extends View {
 
     private final Activity activity;
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
     private final Typeface body, bodyMedium;
     private final SharedPreferences prefs;
@@ -101,8 +105,11 @@ final class NothingLauncherView extends View {
     private long enterDown;
     private boolean paused;
 
-    private int bg, panel, panel2, text, dim, divider;
+    private int bg, panel, panel2, text, dim, divider, accent, danger, border;
     private boolean light;
+    private ThemePalette palette;
+    private Shader backgroundShader, glowPrimaryShader, glowSecondaryShader;
+    private int backgroundKey = Integer.MIN_VALUE;
     private final Runnable ticker = new Runnable() {
         @Override public void run() { if (!paused) { invalidate(); clock.postDelayed(this, 1000); } }
     };
@@ -199,7 +206,7 @@ final class NothingLauncherView extends View {
     @Override protected void onDraw(Canvas raw) {
         super.onDraw(raw);
         sx=getWidth()/W; sy=getHeight()/H; raw.save(); raw.scale(sx,sy);
-        applyPalette(); raw.drawColor(bg); items.clear();
+        applyPalette(); drawThemeBackground(raw); items.clear();
         // Centre each board from its actual content bounds; the source grids have different widths.
         float boardOffset=secondaryXOffset();
         if(boardOffset!=0) raw.translate(boardOffset,0);
@@ -219,11 +226,31 @@ final class NothingLauncherView extends View {
 
     private void applyPalette() {
         int mode=prefs.getInt("theme_mode",1); Calendar c=Calendar.getInstance();
-        light=mode==0 || (mode==2 && c.get(Calendar.HOUR_OF_DAY)>=prefs.getInt("light_start",6)
+        boolean originalLight=mode==0 || (mode==2 && c.get(Calendar.HOUR_OF_DAY)>=prefs.getInt("light_start",6)
                 && c.get(Calendar.HOUR_OF_DAY)<prefs.getInt("dark_start",18));
-        bg=light?0xfff2f0ea:0xff191919; panel=light?0xffdfdcd5:0xff292929;
-        panel2=light?0xffe9e6df:0xff242424; text=light?0xff171717:0xfff2f1ed;
-        dim=light?0xff5e5c57:0xffaaa9a6; divider=light?0x22000000:0x22ffffff;
+        int preset=prefs.getInt("theme_preset",ThemePalette.ORIGINAL);
+        if(preset<ThemePalette.ORIGINAL||preset>=ThemePalette.COUNT)preset=ThemePalette.ORIGINAL;
+        palette=ThemePalette.resolve(preset,originalLight);light=palette.lightSurface;
+        bg=palette.backgroundStart;panel=palette.panel;panel2=palette.panelAlt;text=palette.text;
+        dim=palette.dim;divider=palette.divider;accent=palette.accent;danger=palette.danger;border=palette.border;
+        int key=(preset+2)*2+(originalLight?1:0);if(key!=backgroundKey){prepareThemeBackground();backgroundKey=key;}
+    }
+
+    private void prepareThemeBackground(){
+        backgroundShader=palette.backgroundStart==palette.backgroundEnd?null:
+                new LinearGradient(0,0,W,H,palette.backgroundStart,palette.backgroundEnd,Shader.TileMode.CLAMP);
+        glowPrimaryShader=palette.glowPrimary==0?null:new RadialGradient(610,75,255,
+                new int[]{palette.glowPrimary,0x00000000},null,Shader.TileMode.CLAMP);
+        glowSecondaryShader=palette.glowSecondary==0?null:new RadialGradient(105,365,285,
+                new int[]{palette.glowSecondary,0x00000000},null,Shader.TileMode.CLAMP);
+    }
+
+    private void drawThemeBackground(Canvas c){
+        if(backgroundShader==null)c.drawColor(bg);else{backgroundPaint.setShader(backgroundShader);c.drawRect(0,0,W,H,backgroundPaint);}
+        if(glowPrimaryShader!=null){glowPaint.setShader(glowPrimaryShader);c.drawRect(0,0,W,H,glowPaint);}
+        if(glowSecondaryShader!=null){glowPaint.setShader(glowSecondaryShader);c.drawRect(0,0,W,H,glowPaint);}
+        glowPaint.setShader(null);
+        if(palette.grid){for(float x=0;x<=W;x+=36)line(c,x,0,x,H,.45f,palette.gridColor);for(float y=0;y<=H;y+=27)line(c,0,y,W,y,.45f,palette.gridColor);}
     }
 
     private void drawHome(Canvas c) {
@@ -232,14 +259,14 @@ final class NothingLauncherView extends View {
         String[] nav={"Home","Apps","Live TV","Media"};
         for(int i=0;i<nav.length;i++) {
             float x=185+i*69; RectF r=new RectF(x,22,x+58,48);
-            boolean active=i==0, f=focused("nav"+i); if(active||f) round(c,r,13,f?focusFill():panel);
-            label(c,nav[i],r.centerX(),39,11,f?focusText():text,Paint.Align.CENTER,bodyMedium);
+            boolean active=i==0, f=focused("nav"+i); if(active||f) round(c,r,13,f?focusFill():activeNavFill());
+            label(c,nav[i],r.centerX(),39,11,f?focusText():active?activeNavText():text,Paint.Align.CENTER,bodyMedium);
             final int n=i; add("nav"+i,r,()->{ if(n==1)show(Screen.APPS,"app0"); else if(n==2)show(Screen.LIVE_TV,"tv0"); else if(n==3)show(Screen.MEDIA,"media0"); },null);
         }
         iconButton(c,"search",510,"⌕",()->show(Screen.SEARCH,"key0"));
         iconButton(c,"inputtop",550,"↪",()->show(Screen.INPUTS,"input0"));
         iconButton(c,"settingtop",590,"⚙",()->show(Screen.SETTINGS,"settings0"));
-        RectF profile=new RectF(650,22,678,50); round(c,profile,14,RED); label(c,"P",664,42,12,Color.WHITE,Paint.Align.CENTER,bodyMedium);
+        RectF profile=new RectF(650,22,678,50); round(c,profile,14,danger); label(c,"P",664,42,12,Color.WHITE,Paint.Align.CENTER,bodyMedium);
         add("profile",profile,()->openSystem(Settings.ACTION_SYNC_SETTINGS),null);
 
         drawAnalog(c,116,130,62);
@@ -247,7 +274,7 @@ final class NothingLauncherView extends View {
         RectF date=new RectF(190,82,298,218); round(c,date,14,panel);
         label(c,new SimpleDateFormat("EEEE",Locale.getDefault()).format(now.getTime()).toUpperCase(Locale.ROOT),203,104,10,dim,Paint.Align.LEFT,bodyMedium);
         dot(c,new SimpleDateFormat("dd",Locale.getDefault()).format(now.getTime()),203,121,7.4f,text);
-        label(c,new SimpleDateFormat("MMM  /  yyyy",Locale.getDefault()).format(now.getTime()).toUpperCase(Locale.ROOT),203,200,10,RED,Paint.Align.LEFT,bodyMedium);
+        label(c,new SimpleDateFormat("MMM  /  yyyy",Locale.getDefault()).format(now.getTime()).toUpperCase(Locale.ROOT),203,200,10,accent,Paint.Align.LEFT,bodyMedium);
 
         drawPrayerHome(c,306,82,202,136,now);
         drawHomeControls(c);
@@ -258,8 +285,8 @@ final class NothingLauncherView extends View {
         for(int i=0;i<8;i++) {
             float x=55+i*79; RectF r=new RectF(x,256,x+66,316); App a=i<7&&i<fav.size()?fav.get(i):null; boolean allApps=i==7;
             String itemId=allApps?"home_all_apps":"fav"+i;
-            boolean f=focused(itemId); if(f) { round(c,new RectF(r.left-4,r.top-4,r.right+4,r.bottom+4),18,text); round(c,r,15,RED); }
-            else round(c,r,15,panel);
+            boolean f=focused(itemId); if(f) { round(c,new RectF(r.left-4,r.top-4,r.right+4,r.bottom+4),18,text); round(c,r,15,accent); }
+            else round(c,r,15,homeAppFill(i));
             if(allApps) {
                 for(int row=0;row<3;row++)for(int col=0;col<3;col++)circle(c,r.centerX()-9+col*9,r.centerY()-10+row*9,1.8f,f?Color.WHITE:text);
                 label(c,"All apps",r.centerX(),334,9,text,Paint.Align.CENTER,body);
@@ -291,11 +318,11 @@ final class NothingLauncherView extends View {
     private void drawHomeControls(Canvas c) {
         RectF input=new RectF(517,82,658,136); boolean fi=focused("home_input"); round(c,input,12,fi?focusFill():panel);
         label(c,"↪  "+primaryInputLabel(),530,105,13,fi?focusText():text,Paint.Align.LEFT,bodyMedium);
-        label(c,"TV / HDMI / AV",530,125,9,fi?0xff555555:dim,Paint.Align.LEFT,body); add("home_input",input,()->show(Screen.INPUTS,"input0"),null);
+        label(c,"TV / HDMI / AV",530,125,9,fi?focusText():dim,Paint.Align.LEFT,body); add("home_input",input,()->show(Screen.INPUTS,"input0"),null);
         RectF net=new RectF(517,145,585,218); boolean fn=focused("home_network"); round(c,net,12,fn?focusFill():panel);
         label(c,networkGlyph(),551,173,22,fn?focusText():text,Paint.Align.CENTER,body); label(c,networkSummary(),551,199,9,fn?focusText():text,Paint.Align.CENTER,bodyMedium);
         add("home_network",net,()->show(Screen.NETWORK,"network_wifi"),null);
-        RectF sleep=new RectF(594,145,662,218); boolean fs=focused("home_sleep"); round(c,sleep,12,fs?focusFill():RED);
+        RectF sleep=new RectF(594,145,662,218); boolean fs=focused("home_sleep"); round(c,sleep,12,fs?focusFill():danger);
         label(c,"☾",628,173,22,fs?focusText():Color.WHITE,Paint.Align.CENTER,body); label(c,"Sleep timer",628,194,9,fs?focusText():Color.WHITE,Paint.Align.CENTER,bodyMedium);
         label(c,"SYSTEM",628,207,8,fs?focusText():Color.WHITE,Paint.Align.CENTER,body); add("home_sleep",sleep,this::openSleepSettings,null);
     }
@@ -323,7 +350,7 @@ final class NothingLauncherView extends View {
         } else for(int i=0;i<list.size()&&i<6;i++) { int row=i/3,col=i%3; float x=48+col*203,y=144+row*102; RectF r=new RectF(x,y,x+190,y+89); TvInputInfo in=list.get(i); int state=inputState(in);
             boolean f=focused("input"+i); tile(c,r,f); label(c,inputGlyph(in),x+18,y+29,22,f?focusText():text,Paint.Align.LEFT,body);
             label(c,safeInputLabel(in),x+14,y+57,14,f?focusText():text,Paint.Align.LEFT,bodyMedium);
-            label(c,stateLabel(state),x+14,y+77,9,f?0xff555555:dim,Paint.Align.LEFT,body); final TvInputInfo target=in; add("input"+i,r,()->openInput(target),null);
+            label(c,stateLabel(state),x+14,y+77,9,f?focusText():dim,Paint.Align.LEFT,body); final TvInputInfo target=in; add("input"+i,r,()->openInput(target),null);
         }
         label(c,"Only sources reported by Android TV Input Framework are shown.",48,372,10,dim,Paint.Align.LEFT,body);
         footer(c,"05  /  INPUTS");
@@ -335,10 +362,10 @@ final class NothingLauncherView extends View {
         String[] value={networkSummary(),bluetoothState(),primaryInputLabel(),"System receiver",pictureMode(),soundMode(),"System timer","System menu"};
         String[] glyph={"⌁","ᛒ","↪","▱","▧",")))","☾","○"};
         for(int i=0;i<8;i++){int row=i/4,col=i%4;float x=48+col*151,y=142+row*94;RectF r=new RectF(x,y,x+140,y+82);boolean f=focused("quick"+i);tile(c,r,f);
-            label(c,glyph[i],x+13,y+30,20,f?focusText():text,Paint.Align.LEFT,body);label(c,title[i],x+13,y+53,12,f?focusText():text,Paint.Align.LEFT,bodyMedium);label(c,value[i],x+13,y+72,9,f?0xff555555:dim,Paint.Align.LEFT,body);
+            label(c,glyph[i],x+13,y+30,20,f?focusText():text,Paint.Align.LEFT,body);label(c,title[i],x+13,y+53,12,f?focusText():text,Paint.Align.LEFT,bodyMedium);label(c,value[i],x+13,y+72,9,f?focusText():dim,Paint.Align.LEFT,body);
             final int q=i;add("quick"+i,r,()->quickAction(q),null);}
         AudioManager am=(AudioManager)activity.getSystemService(Context.AUDIO_SERVICE);int vol=am.getStreamVolume(AudioManager.STREAM_MUSIC),max=am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        RectF volume=new RectF(48,332,408,363);round(c,volume,14,panel);label(c,")))  Volume",62,352,9,text,Paint.Align.LEFT,body);line(c,135,348,346,348,4,divider);line(c,135,348,135+211f*vol/Math.max(1,max),348,4,text);circle(c,135+211f*vol/Math.max(1,max),348,5,RED);label(c,String.valueOf(vol),390,352,10,text,Paint.Align.RIGHT,bodyMedium);
+        RectF volume=new RectF(48,332,408,363);round(c,volume,14,panel);label(c,")))  Volume",62,352,9,text,Paint.Align.LEFT,body);line(c,135,348,346,348,4,divider);line(c,135,348,135+211f*vol/Math.max(1,max),348,4,text);circle(c,135+211f*vol/Math.max(1,max),348,5,accent);label(c,String.valueOf(vol),390,352,10,text,Paint.Align.RIGHT,bodyMedium);
         RectF all=new RectF(425,332,650,363);button(c,"quick_all",all,"⚙   All settings",()->show(Screen.SETTINGS,"settings0"));footer(c,"06  /  QUICK SETTINGS");
     }
 
@@ -346,12 +373,12 @@ final class NothingLauncherView extends View {
         header(c,"SETTINGS","Make the TV feel like yours.","07  /  SETTINGS");
         String[] t={"Network & internet","Picture & sound","Remotes & accessories","Apps & storage","Home & widgets","Accessibility","Profiles & restrictions","Android system settings"};
         String[] s={networkSummary(),"Display / audio outputs",bluetoothState()+" / device pairing",apps.size()+" installed apps","Layout / appearance","Captions / reading","Accounts / parental controls","Developer options / updates / about"};
-        for(int i=0;i<8;i++){int row=i/2,col=i%2;float x=48+col*311,y=139+row*61;RectF r=new RectF(x,y,x+294,y+51);boolean f=focused("settings"+i);tile(c,r,f);label(c,settingsGlyph(i),x+13,y+31,21,f?focusText():text,Paint.Align.LEFT,body);label(c,t[i],x+47,y+22,13,f?focusText():text,Paint.Align.LEFT,bodyMedium);label(c,s[i],x+47,y+39,9,f?0xff555555:dim,Paint.Align.LEFT,body);final int n=i;add("settings"+i,r,()->settingsAction(n),null);}footer(c,"07  /  SETTINGS");
+        for(int i=0;i<8;i++){int row=i/2,col=i%2;float x=48+col*311,y=139+row*61;RectF r=new RectF(x,y,x+294,y+51);boolean f=focused("settings"+i);tile(c,r,f);label(c,settingsGlyph(i),x+13,y+31,21,f?focusText():text,Paint.Align.LEFT,body);label(c,t[i],x+47,y+22,13,f?focusText():text,Paint.Align.LEFT,bodyMedium);label(c,s[i],x+47,y+39,9,f?focusText():dim,Paint.Align.LEFT,body);final int n=i;add("settings"+i,r,()->settingsAction(n),null);}footer(c,"07  /  SETTINGS");
     }
 
     private void drawNetwork(Canvas c) {
         header(c,"NETWORK & INTERNET","A clear connection status, at a glance.","08  /  NETWORK");
-        RectF card=new RectF(48,141,270,350);round(c,card,15,panel);circle(c,159,214,42,light?0xfffaf8f2:0xfff1f0ec);label(c,networkGlyph(),159,226,38,0xff171717,Paint.Align.CENTER,body);
+        RectF card=new RectF(48,141,270,350);round(c,card,15,panel);circle(c,159,214,42,palette.iconBackground);label(c,networkGlyph(),159,226,38,0xff171717,Paint.Align.CENTER,body);
         label(c,networkConnected()?"Connected":"Not connected",159,289,17,text,Paint.Align.CENTER,bodyMedium);label(c,networkDetail(),159,312,11,dim,Paint.Align.CENTER,body);pill(c,new RectF(108,327,210,347),networkConnected()?"ACTIVE":"OFFLINE",false,null);
         networkRow(c,"network_wifi",290,140,"Wi-Fi",wifiEnabled()?"On":"Off",()->openSystem(Settings.ACTION_WIFI_SETTINGS));
         networkRow(c,"network_current",290,195,networkDetail(),networkConnected()?"Connected":"Unavailable",()->openSystem(Settings.ACTION_WIFI_SETTINGS));
@@ -425,7 +452,10 @@ final class NothingLauncherView extends View {
     private void drawPersonalize(Canvas c) {
         header(c,"HOME & WIDGETS","Keep the things you use. Hide the rest.","14  /  PERSONALIZE");label(c,"WIDGETS",48,126,9,dim,Paint.Align.LEFT,bodyMedium);label(c,"APPEARANCE",366,126,9,dim,Paint.Align.LEFT,bodyMedium);
         personalizeRow(c,"widget_clock",48,135,"◷  Clock & date","On",()->{});personalizeRow(c,"widget_prayer",48,182,"♟  Prayer times",prefs.getBoolean("prayer_home",true)?"On":"Off",()->toggle("prayer_home",true));personalizeRow(c,"widget_sleep",48,229,"☾  Sleep timer shortcut","On",()->{});personalizeRow(c,"widget_network",48,276,"⌁  Network status","On",()->{});personalizeRow(c,"widget_input",48,323,"↪  Input shortcut","On",()->{});
-        int mode=prefs.getInt("theme_mode",1);personalizeRow(c,"appearance_theme",366,135,"☾  Theme",mode==0?"Light":mode==1?"Dark":"Automatic",()->{prefs.edit().putInt("theme_mode",(mode+1)%3).apply();invalidate();});personalizeRow(c,"appearance_icons",366,182,"⠿  App icons","Monochrome",()->{});personalizeRow(c,"appearance_favs",366,229,"↔  Favorite apps","Arrange in All Apps",()->show(Screen.APPS,"app0"));personalizeRow(c,"appearance_dream",366,276,"◷  Screen saver","Clock",()->openSystem(Settings.ACTION_DREAM_SETTINGS));personalizeRow(c,"appearance_motion",366,323,"≡  Motion","Reduced",()->{});footer(c,"14  /  PERSONALIZE");
+        int mode=prefs.getInt("theme_mode",1),preset=prefs.getInt("theme_preset",ThemePalette.ORIGINAL);
+        personalizeRow(c,"appearance_theme",366,135,"☾  Brightness mode",mode==0?"Light":mode==1?"Dark":"Automatic",()->{prefs.edit().putInt("theme_mode",(mode+1)%3).apply();invalidate();});
+        personalizeRow(c,"appearance_preset",366,182,"⠿  Interface theme",ThemePalette.name(preset),()->{prefs.edit().putInt("theme_preset",ThemePalette.next(preset)).apply();backgroundKey=Integer.MIN_VALUE;invalidate();});
+        personalizeRow(c,"appearance_favs",366,229,"↔  Favorite apps","Arrange in All Apps",()->show(Screen.APPS,"app0"));personalizeRow(c,"appearance_dream",366,276,"◷  Screen saver","Clock",()->openSystem(Settings.ACTION_DREAM_SETTINGS));personalizeRow(c,"appearance_motion",366,323,"≡  Motion","Reduced",()->{});footer(c,"14  /  PERSONALIZE");
     }
 
     private void drawLiveTv(Canvas c) {
@@ -436,7 +466,7 @@ final class NothingLauncherView extends View {
     }
 
     private void drawAmbient(Canvas c) {
-        dot(c,"NOTHING (TV)",43,30,1.5f,text);Calendar now=Calendar.getInstance();dot(c,new SimpleDateFormat("HH:mm",Locale.getDefault()).format(now.getTime()),76,132,6.5f,text);dot(c,new SimpleDateFormat("EEEE / dd MMMM",Locale.getDefault()).format(now.getTime()).toUpperCase(Locale.ROOT),76,225,1.8f,text);PrayerTimes pt=prayers(now);int n=pt.nextIndex(now);RectF r=new RectF(76,262,348,301);round(c,r,20,panel);circle(c,96,281,4,RED);label(c,"Next prayer  /  "+PrayerTimes.NAMES[n]+" "+PrayerTimes.format(pt.minutes[n],true),112,287,13,text,Paint.Align.LEFT,body);drawAnalog(c,520,182,92);label(c,"Press any button to return",43,375,10,dim,Paint.Align.LEFT,body);dot(c,"CLOCK / AMBIENT",565,365,1.3f,dim);add("ambient",new RectF(0,0,W,H),()->show(Screen.HOME,"fav0"),null);
+        dot(c,"NOTHING (TV)",43,30,1.5f,text);Calendar now=Calendar.getInstance();dot(c,new SimpleDateFormat("HH:mm",Locale.getDefault()).format(now.getTime()),76,132,6.5f,text);dot(c,new SimpleDateFormat("EEEE / dd MMMM",Locale.getDefault()).format(now.getTime()).toUpperCase(Locale.ROOT),76,225,1.8f,text);PrayerTimes pt=prayers(now);int n=pt.nextIndex(now);RectF r=new RectF(76,262,348,301);round(c,r,20,panel);circle(c,96,281,4,accent);label(c,"Next prayer  /  "+PrayerTimes.NAMES[n]+" "+PrayerTimes.format(pt.minutes[n],true),112,287,13,text,Paint.Align.LEFT,body);drawAnalog(c,520,182,92);label(c,"Press any button to return",43,375,10,dim,Paint.Align.LEFT,body);dot(c,"CLOCK / AMBIENT",565,365,1.3f,dim);add("ambient",new RectF(0,0,W,H),()->show(Screen.HOME,"fav0"),null);
     }
 
     // ---- Components -----------------------------------------------------
@@ -456,40 +486,56 @@ final class NothingLauncherView extends View {
     private void homeBottom(Canvas c,String id,float x,String glyph,String title,Runnable run){RectF r=new RectF(x,342,x+151,370);button(c,id,r,glyph+"   "+title,run);}
     private void iconButton(Canvas c,String id,float x,String glyph,Runnable run){RectF r=new RectF(x,22,x+30,50);boolean f=focused(id);if(f)round(c,r,14,focusFill());label(c,glyph,r.centerX(),42,18,f?focusText():text,Paint.Align.CENTER,body);add(id,r,run,null);}
     private void chip(Canvas c,String id,float x,float y,float w,String value,boolean selected,Runnable run){RectF r=new RectF(x,y,x+w,y+25);boolean f=focused(id);round(c,r,13,f||selected?focusFill():panel);label(c,value,r.centerX(),y+17,9,f||selected?focusText():text,Paint.Align.CENTER,bodyMedium);add(id,r,run,null);}
-    private void button(Canvas c,String id,RectF r,String title,Runnable run){boolean f=focused(id);round(c,r,14,f?focusFill():panel);if(f)stroke(c,r,14,0xff151515,2);label(c,title,r.centerX(),r.centerY()+5,11,f?focusText():text,Paint.Align.CENTER,bodyMedium);add(id,r,run,null);}
+    private void button(Canvas c,String id,RectF r,String title,Runnable run){boolean f=focused(id);round(c,r,14,f?focusFill():buttonFill(id));if(f)stroke(c,r,14,palette.focusText,2);label(c,title,r.centerX(),r.centerY()+5,11,f?focusText():text,Paint.Align.CENTER,bodyMedium);add(id,r,run,null);}
     private void button(Canvas c,String id,float x,RectF r,String title,Runnable run){button(c,id,r,title,run);}
-    private void tile(Canvas c,RectF r,boolean focused){round(c,r,14,focused?focusFill():panel);if(focused){stroke(c,new RectF(r.left-3,r.top-3,r.right+3,r.bottom+3),16,text,2);stroke(c,r,14,0xff171717,1);circle(c,r.right-5,r.top+5,3,RED);}}
-    private void settingRow(Canvas c,String id,float x,float y,float w,String spec,Runnable run){String[] v=spec.split("\\|",2);RectF r=new RectF(x,y,x+w,y+43);boolean f=focused(id);tile(c,r,f);label(c,v[0],x+14,y+27,11,f?focusText():text,Paint.Align.LEFT,bodyMedium);if(v.length>1)label(c,v[1],x+w-12,y+27,9,f?0xff555555:dim,Paint.Align.RIGHT,body);add(id,r,run,null);}
-    private void appOption(Canvas c,String id,float x,float y,String title,String status,Runnable run){RectF r=new RectF(x,y,650,y+43);boolean f=focused(id);tile(c,r,f);label(c,title,x+14,y+27,11,f?focusText():text,Paint.Align.LEFT,bodyMedium);label(c,status,635,y+27,9,f?0xff555555:dim,Paint.Align.RIGHT,body);add(id,r,run,null);}
+    private void tile(Canvas c,RectF r,boolean focused){round(c,r,14,focused?focusFill():panel);if(focused){stroke(c,new RectF(r.left-3,r.top-3,r.right+3,r.bottom+3),16,text,2);stroke(c,r,14,palette.focusText,1);circle(c,r.right-5,r.top+5,3,danger);}}
+    private void settingRow(Canvas c,String id,float x,float y,float w,String spec,Runnable run){String[] v=spec.split("\\|",2);RectF r=new RectF(x,y,x+w,y+43);boolean f=focused(id);tile(c,r,f);label(c,v[0],x+14,y+27,11,f?focusText():text,Paint.Align.LEFT,bodyMedium);if(v.length>1)label(c,v[1],x+w-12,y+27,9,f?focusText():dim,Paint.Align.RIGHT,body);add(id,r,run,null);}
+    private void appOption(Canvas c,String id,float x,float y,String title,String status,Runnable run){RectF r=new RectF(x,y,650,y+43);boolean f=focused(id);tile(c,r,f);label(c,title,x+14,y+27,11,f?focusText():text,Paint.Align.LEFT,bodyMedium);label(c,status,635,y+27,9,f?focusText():dim,Paint.Align.RIGHT,body);add(id,r,run,null);}
     private void prayerRow(Canvas c,String id,float x,float y,String title,String status,Runnable run){appOption(c,id,x,y,title,status,run);}
     private void personalizeRow(Canvas c,String id,float x,float y,String title,String status,Runnable run){settingRow(c,id,x,y,294,title+"|"+status,run);}
     private void networkRow(Canvas c,String id,float x,float y,String title,String status,Runnable run){settingRow(c,id,x,y,360,"⌁  "+title+"|"+status,run);}
     private void accessoriesRow(Canvas c,String id,float x,float y,String title,String status,Runnable run){settingRow(c,id,x,y,354,title+"|"+status,run);}
     private void emptyState(Canvas c,String message,String action,Runnable run){float center=360-secondaryXOffset();label(c,message,center,225,16,text,Paint.Align.CENTER,bodyMedium);button(c,"empty_action",new RectF(center-125,255,center+125,297),action,run);}
-    private void pill(Canvas c,RectF r,String value,boolean focus,Runnable run){round(c,r,r.height()/2,focus?focusFill():RED);label(c,value,r.centerX(),r.centerY()+4,7,focus?focusText():Color.WHITE,Paint.Align.CENTER,bodyMedium);if(run!=null)add("pill_"+value,r,run,null);}
+    private void pill(Canvas c,RectF r,String value,boolean focus,Runnable run){round(c,r,r.height()/2,focus?focusFill():accent);label(c,value,r.centerX(),r.centerY()+4,7,focus?focusText():Color.WHITE,Paint.Align.CENTER,bodyMedium);if(run!=null)add("pill_"+value,r,run,null);}
 
-    private void drawAnalog(Canvas c,float cx,float cy,float radius){circle(c,cx,cy,radius,panel);for(int i=0;i<12;i++){double a=Math.PI*2*i/12-Math.PI/2;float x=(float)(cx+Math.cos(a)*(radius-10)),y=(float)(cy+Math.sin(a)*(radius-10));circle(c,x,y,i==0?3:1.4f,i==0?RED:dim);}Calendar now=Calendar.getInstance();double minute=now.get(Calendar.MINUTE)*Math.PI/30-Math.PI/2,hour=(now.get(Calendar.HOUR)%12+now.get(Calendar.MINUTE)/60f)*Math.PI/6-Math.PI/2;hand(c,cx,cy,hour,radius*.43f,8,text);hand(c,cx,cy,minute,radius*.62f,4,dim);circle(c,cx,cy,5,RED);}
+    private void drawAnalog(Canvas c,float cx,float cy,float radius){circle(c,cx,cy,radius,panel);if(Color.alpha(border)>0){p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1);p.setColor(border);c.drawCircle(cx,cy,radius,p);p.setStyle(Paint.Style.FILL);}for(int i=0;i<12;i++){double a=Math.PI*2*i/12-Math.PI/2;float x=(float)(cx+Math.cos(a)*(radius-10)),y=(float)(cy+Math.sin(a)*(radius-10));circle(c,x,y,i==0?3:1.4f,i==0?danger:dim);}Calendar now=Calendar.getInstance();double minute=now.get(Calendar.MINUTE)*Math.PI/30-Math.PI/2,hour=(now.get(Calendar.HOUR)%12+now.get(Calendar.MINUTE)/60f)*Math.PI/6-Math.PI/2;hand(c,cx,cy,hour,radius*.43f,8,text);hand(c,cx,cy,minute,radius*.62f,4,dim);circle(c,cx,cy,5,danger);}
     private void hand(Canvas c,float cx,float cy,double a,float len,float width,int color){p.setColor(color);p.setStrokeWidth(width);p.setStrokeCap(Paint.Cap.ROUND);c.drawLine(cx,cy,(float)(cx+Math.cos(a)*len),(float)(cy+Math.sin(a)*len),p);}
     private void drawAppIcon(Canvas c,App a,float cx,float cy,float size,boolean inverse){
         float radius=size/2+5;
-        int iconBg=inverse?Color.WHITE:(light?0xfff6f3ec:0xffeeeeea);
+        int iconBg=inverse?Color.WHITE:palette.iconBackground;
         if(a.icon==null){circle(c,cx,cy,radius,iconBg);label(c,a.label.substring(0,1).toUpperCase(Locale.ROOT),cx,cy+7,18,inverse?0xff171717:text,Paint.Align.CENTER,bodyMedium);return;}
         int save=c.save();
         path.reset();path.addCircle(cx,cy,radius,Path.Direction.CW);c.clipPath(path);
         circle(c,cx,cy,radius,iconBg);
         try{
-            Drawable d=a.icon.mutate();d.setColorFilter(MONO);
+            Drawable d=a.icon.mutate();if(palette.monochromeIcons)d.setColorFilter(MONO);else d.clearColorFilter();
             d.setBounds((int)(cx-radius),(int)(cy-radius),(int)(cx+radius),(int)(cy+radius));
             d.draw(c);d.clearColorFilter();
         }catch(RuntimeException ignored){}
         c.restoreToCount(save);
     }
-    private void round(Canvas c,RectF r,float radius,int color){p.setStyle(Paint.Style.FILL);p.setColor(color);c.drawRoundRect(r,radius,radius,p);}
+    private int homeAppFill(int index){
+        return palette.appTile(index);
+    }
+    private int activeNavFill(){
+        return palette.preset==ThemePalette.GLASS_DARK||palette.preset==ThemePalette.INDUSTRIAL_MONO?panel:focusFill();
+    }
+    private int activeNavText(){
+        return palette.preset==ThemePalette.GLASS_DARK||palette.preset==ThemePalette.INDUSTRIAL_MONO?text:focusText();
+    }
+    private int buttonFill(String id){
+        if("bottom_tv".equals(id))return palette.bottomTile(0);
+        if("bottom_media".equals(id))return palette.bottomTile(1);
+        if("bottom_custom".equals(id))return palette.bottomTile(2);
+        if("bottom_quick".equals(id))return palette.bottomTile(3);
+        return panel;
+    }
+    private void round(Canvas c,RectF r,float radius,int color){boolean surface=color==panel||color==panel2;if(surface&&Color.alpha(palette.shadowColor())>0){p.setStyle(Paint.Style.FILL);p.setColor(palette.shadowColor());c.drawRoundRect(r.left+1.2f,r.top+1.6f,r.right+1.2f,r.bottom+1.6f,radius,radius,p);}p.setStyle(Paint.Style.FILL);p.setColor(color);c.drawRoundRect(r,radius,radius,p);if(surface&&Color.alpha(border)>0){p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1);p.setColor(border);c.drawRoundRect(r,radius,radius,p);p.setStyle(Paint.Style.FILL);}}
     private void stroke(Canvas c,RectF r,float radius,int color,float width){p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(width);p.setColor(color);c.drawRoundRect(r,radius,radius,p);p.setStyle(Paint.Style.FILL);}
     private void circle(Canvas c,float x,float y,float radius,int color){p.setStyle(Paint.Style.FILL);p.setColor(color);c.drawCircle(x,y,radius,p);}
     private void line(Canvas c,float x1,float y1,float x2,float y2,float width,int color){p.setStrokeWidth(width);p.setStrokeCap(Paint.Cap.ROUND);p.setColor(color);c.drawLine(x1,y1,x2,y2,p);}
     private void label(Canvas c,String value,float x,float baseline,float size,int color,Paint.Align align,Typeface face){p.setTypeface(face);p.setTextSize(size);p.setTextAlign(align);p.setColor(color);p.setStyle(Paint.Style.FILL);String out=value==null?"":value;if(out.length()>64)out=out.substring(0,61)+"…";c.drawText(out,x,baseline,p);}
-    private int focusFill(){return light?0xffffffff:0xfff3f1ec;} private int focusText(){return 0xff171717;}
+    private int focusFill(){return palette.focusFill;} private int focusText(){return palette.focusText;}
     private boolean focused(String id){return id.equals(focusId);} private void add(String id,RectF r,Runnable click,Runnable hold){items.add(new Item(id,new RectF(r),click,hold));}
 
     // Dot matrix 5x7 renderer for the reference's NDot-style display type.

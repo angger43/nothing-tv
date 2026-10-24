@@ -10,14 +10,47 @@ This project is a standalone visual fork of [CleanYourTV](https://github.com/Gat
 - Live analog clock and date
 - Offline Indonesian prayer-time calculations, city/method selection, and next-prayer countdown
 - Dynamic installed-app discovery, favorites, ordering, app details, and hiding
-- Circular monochrome app-icon treatment on Home, All Apps, Search, and App Options
+- Circular clipped app icons on Home, All Apps, Search, and App Options, with monochrome treatment where the selected theme calls for it
 - Genuine TV input, network, Bluetooth, storage, audio, and package data when Android exposes it
 - Links to the TV's real system settings for restricted controls
 - Manual Light, Manual Dark, and Automatic theme modes
 - DreamService clock screensaver
 - No analytics, telemetry, ads, or `INTERNET` permission
 
-## Screenshots
+## Themes
+
+Open **Settings → Home & Widgets → Appearance → Interface theme**, then press OK to cycle through the six presets. Changes apply immediately and persist across launcher restarts and TV reboots.
+
+The adjacent **Brightness mode** control retains the original Manual Light, Manual Dark, and Automatic behavior for the **Original** fallback theme. The six named presets use their designed palette so their appearance stays faithful to the reference.
+
+- **Nothing Light** — bright off-white canvas, crisp white surfaces, subtle borders, and red focus accents.
+- **Glass Dark** — translucent navy surfaces over cached gradients and static red/violet glow. No blur or per-frame shader creation.
+- **Neo Minimal** — editorial warm-white palette, restrained borders, black selection, and generous visual calm.
+- **Industrial Mono** — near-black surfaces, monochrome icons, strong outlines, red indicators, and a lightweight static grid.
+- **Warm Premium** — cinematic brown gradient, warm cream typography, copper borders, and peach/coral focus.
+- **Playful Accent** — deep navy foundation with purple, blue, teal, and red accents across existing components.
+
+Every image below is a real 1920×1080 capture from the running Changhong TV, not a mockup.
+
+| Nothing Light | Glass Dark |
+| --- | --- |
+| [![Nothing Light theme](docs/screenshots/themes/nothing-light.png)](docs/screenshots/themes/nothing-light.png) | [![Glass Dark theme](docs/screenshots/themes/glass-dark.png)](docs/screenshots/themes/glass-dark.png) |
+
+| Neo Minimal | Industrial Mono |
+| --- | --- |
+| [![Neo Minimal theme](docs/screenshots/themes/neo-minimal.png)](docs/screenshots/themes/neo-minimal.png) | [![Industrial Mono theme](docs/screenshots/themes/industrial-mono.png)](docs/screenshots/themes/industrial-mono.png) |
+
+| Warm Premium | Playful Accent |
+| --- | --- |
+| [![Warm Premium theme](docs/screenshots/themes/warm-premium.png)](docs/screenshots/themes/warm-premium.png) | [![Playful Accent theme](docs/screenshots/themes/playful-accent.png)](docs/screenshots/themes/playful-accent.png) |
+
+### Theme selection and All Apps
+
+| Appearance selector | Playful Accent in All Apps |
+| --- | --- |
+| [![Theme selector](docs/screenshots/themes/appearance-selector.png)](docs/screenshots/themes/appearance-selector.png) | [![Playful Accent All Apps](docs/screenshots/themes/playful-all-apps.png)](docs/screenshots/themes/playful-all-apps.png) |
+
+## More screens
 
 Captured at 1920×1080 from a real Android TV. Select any image to open the full-resolution reference; the original files are in [`docs/screenshots`](docs/screenshots).
 
